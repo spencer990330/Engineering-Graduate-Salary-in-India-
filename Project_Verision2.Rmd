@@ -1,0 +1,442 @@
+---
+title: "Project"
+author: "Straight A’s Group"
+date: "11/27/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+Engineering_graduate_salary<- read.csv("Engineering_graduate_salary.csv")
+data<- Engineering_graduate_salary[,c("Salary","Gender","Degree", "Specialization", "collegeGPA", "GraduationYear","English", "Logical", "Quant", "Domain", "ComputerProgramming","conscientiousness", "agreeableness", "extraversion", "nueroticism", "openess_to_experience" )]
+data$Gender<-ifelse(data$Gender=="m", 0,1)
+data$Degree<- ifelse(data$Degree=="B.Tech/B.E.",0, 1)
+data$Specialization<-ifelse(data$Specialization=="electronics and communication engineering", 0,ifelse(data$Specialization=="computer science & engineering", 1, ifelse(data$Specialization=="information technology", 2,ifelse(data$Specialization=="computer engineering", 3, ifelse(data$Specialization=="computer application", 4, ifelse(data$Specialization=="mechanical engineering", 5, ifelse(data$Specialization=="electronics and electrical engineering", 6, 7)))))))
+data <- data[data$ComputerProgramming!=-1,]
+data$GraduationYear<- ifelse(data$GraduationYear>=2013, 1,0)
+data <- data[data$Domain!=-1,]
+data$Domain<- round(data$Domain,4)
+data$conscientiousness<- round(data$conscientiousness,4)
+data$agreeableness<- round(data$agreeableness,4)
+data$extraversion<- round(data$extraversion,4)
+data$nueroticism<- round(data$nueroticism,4)
+data$openess_to_experience<- round(data$openess_to_experience,4)
+```
+
+```{r}
+outliers1<- function(x){
+qnt <- quantile(x, probs=c(0.25, 0.75))
+H <- 1.5*IQR(x)
+return(qnt[1]-H)
+}
+outliers2<- function(x){
+qnt <- quantile(x, probs=c(0.25, 0.75))
+H <- 1.5*IQR(x)
+return(qnt[2]+H)
+}
+data<- data[outliers1(data$collegeGPA)< data$collegeGPA & data$collegeGPA< outliers2(data$collegeGPA),]
+data<- data[outliers1(data$Domain)< data$Domain & data$Domain< outliers2(data$Domain),]
+data<- data[outliers1(data$English)< data$English & data$English< outliers2(data$English),]
+data<- data[outliers1(data$Logical)< data$Logical & data$Logical< outliers2(data$Logical),]
+data<- data[outliers1(data$Quant)< data$Quant & data$Quant< outliers2(data$Quant),]
+data<- data[outliers1(data$ComputerProgramming)< data$ComputerProgramming & data$ComputerProgramming< outliers2(data$ComputerProgramming),]
+data<- data[outliers1(data$conscientiousness)< data$conscientiousness & data$conscientiousness< outliers2(data$conscientiousness),]
+data<- data[outliers1(data$agreeableness)< data$agreeableness & data$agreeableness< outliers2(data$agreeableness),]
+data<- data[outliers1(data$extraversion)< data$extraversion & data$extraversion< outliers2(data$extraversion),]
+data<- data[outliers1(data$nueroticism)< data$nueroticism & data$nueroticism< outliers2(data$nueroticism),]
+data<- data[outliers1(data$openess_to_experience)< data$openess_to_experience & data$openess_to_experience< outliers2(data$openess_to_experience),]
+data$Specialization<- as.character(data$Specialization)
+data<- data[outliers1(data$Salary)< data$Salary & data$Salary< outliers2(data$Salary),]
+write.csv(data, "projectNewData.csv")
+nrow(data)
+```
+
+```{r}
+data$Specialization=as.character(data$Specialization)
+data$Degree=as.character(data$Degree)
+data$GraduationYear=as.character(data$GraduationYear)
+
+
+lm1=lm(Salary~Gender+Degree+Specialization+collegeGPA+GraduationYear+English+Logical+Quant+Domain+ComputerProgramming+conscientiousness+agreeableness+extraversion+nueroticism+openess_to_experience,data=data) #all variables
+summary(lm1)  #7 significant variables
+anova(lm1)  # 10 significant variables 
+lm2=lm(Salary~Specialization+collegeGPA+GraduationYear+English+Quant+ComputerProgramming,data=data[data$Specialization=="1"| data$Specialization=="4",]) # build with 7
+anova(lm2)
+
+```
+
+```{r}
+library(leaps)
+library(lattice)
+leaps.lm<-function(formula.lm, data){
+    library(leaps)
+    library(nlme)
+    library(DAAG)
+    model.lm = lm(formula.lm, data=data, x=TRUE, y=TRUE)
+    xx = model.lm$x[,-1]
+    yy = model.lm$y
+    
+    var.names = colnames(xx)
+    
+    leaps.lm.temp = summary(regsubsets(x=xx, y=yy, nbest=2^ncol(xx), nvmax=2^ncol(xx),
+                                method="exhaustive", all.best=TRUE, really.big=T))    
+    
+    aic.list = rep(0, nrow(leaps.lm.temp$which))
+    bic.list = rep(0, nrow(leaps.lm.temp$which))
+    press.list = rep(0, nrow(leaps.lm.temp$which))
+    model.name = rep(0, nrow(leaps.lm.temp$which))
+    models.try = leaps.lm.temp$which[,-1]
+    model.size = rowSums(as.matrix(models.try))
+    
+    for(i in 1:length(aic.list)){
+        matrix.temp = as.data.frame(cbind(yy, xx[, (1:ncol(xx))[models.try[i,]]]))
+        colnames(matrix.temp)[1]<-"y"
+        cur.model = lm(y~., data=matrix.temp)
+        aic.list[i] = extractAIC(cur.model)[2]
+        bic.list[i] = aic.list[i]-2*model.size[i]+log(nrow(xx))*model.size[i]
+        press.list[i] = press(cur.model)
+        model.name[i] = paste(var.names[models.try[i,]], collapse=" ")
+    }
+
+    
+    results.leaps=data.frame(model.name, model.size , leaps.lm.temp$rss, leaps.lm.temp$rsq, leaps.lm.temp$adjr2, leaps.lm.temp$cp, aic.list, bic.list, press.list)
+    colnames(results.leaps)=c("model", "size", "SSE", "r2", "adjr2", "Cp", "aic", "bic", "press")
+    return(results.leaps)
+}
+data.result = leaps.lm(Salary~Gender+Specialization+collegeGPA+GraduationYear+English+Quant+ComputerProgramming,data=data[data$Specialization=="1"| data$Specialization=="4",])
+
+data.result[head(order(data.result$r2,decreasing = T),5),]$model #largest r2
+data.result[head(order(data.result$Cp),5),]$model #smallest cp
+data.result[head(order(data.result$aic),5),]$model #smallest AIC
+data.result[head(order(data.result$press),5),]$model #smallest press
+
+#Gender Specialization3 Specialization4 Specialization5 collegeGPA GraduationYear1 English Quant ComputerProgramming will be significant variables that affect salary
+
+```
+
+```{r}
+#all-possible
+library(olsrr)
+model <- lm2
+aprm <- ols_step_all_possible(model)
+plot(aprm)
+aprm
+aprm[head(order(aprm$cp),5),]$predictors
+aprm[head(order(aprm$rsquare,decreasing = T),5),]$predictors
+#Specialization collegeGPA GraduationYear English Quant ComputerProgramming
+```
+
+```{r}
+#stepwise
+null=lm(Salary~1, data=data)
+full=lm(Salary~., data=data)
+step(null, scope=list(lower=null, upper=full), direction="forward")
+step(null, scope=list(lower=null, upper=full), direction="both")
+step(full, scope=list(lower=null, upper=full), direction="backward")
+```
+
+
+
+```{r}
+# using the selected 7 predictors to build the final model
+final_model = lm(
+    Salary ~ Gender +
+             Specialization +
+             collegeGPA + 
+             GraduationYear +
+             English +
+             Quant +
+             ComputerProgramming,
+    data = data
+)
+
+# Gender 
+# Specialization
+# collegeGPA
+# GraduationYear
+# English 
+# Quant 
+# ComputerProgramming
+
+par(mfrow=c(2,2))
+plot(final_model)
+
+final_model_2 = lm(
+    Salary ~ Gender +
+             Specialization +
+             collegeGPA + 
+             GraduationYear +
+             English +
+             Quant +
+             ComputerProgramming +
+             Logical+
+             extraversion,
+    data = data
+)
+
+par(mfrow=c(2,2))
+plot(final_model_2)
+```
+
+From the residual plot, the residuals are jumping around the mean 0. Therefore, the zero mean assumption on the error term is valid. The variation of the residuals is increasing with the fitted values. Therefore, the constant variance assumption on the residuas is violated. Also, the residual plot shows that there are many outliers such as observation numbers 1461 and 2296. There is no particular pattern found in the residual plot. Thus, the linear assumption looks fine. 
+
+The normal probability plot shows that lots of standarded residuals are tail off from the linear line on the right hand side. It suggests that the normality assumption on the residuals is invalid. The scale-location plot also shows couple outliers. There is no observatoin with cook distance larger than 0.5. Therefore, we do not have influrential point from the residuals against leverage plot. 
+
+
+```{r}
+library(ggplot2)
+ggplot(data, aes(x = Salary)) + geom_histogram() + 
+    ggtitle("The Histogram of Salary")
+
+ggplot(data, aes(x = Salary)) + geom_boxplot() + 
+    ggtitle("The Boxplot of Salary")
+```
+
+The histogram of the salary shows that the distribution of the salary is skewed to right. The boxplot shows that there are many outliers in the variable Salary. Therefore, it is suggested to perform log transformation. 
+
+```{r}
+data$lnSalary = log(data$Salary)
+ggplot(data, aes(x = lnSalary)) + geom_histogram() + 
+    ggtitle("The Histogram of log of Salary")
+
+ggplot(data, aes(x = lnSalary)) + geom_boxplot() + 
+    ggtitle("The Boxplot of log of Salary")
+```
+
+After taking the log of the salary, its distribution looks symmetric. The boxplot of the log of the salary still shows lots of outliers on two sides. 
+
+```{r}
+final_model2 = lm(
+    lnSalary ~ Gender +
+             Specialization +
+             collegeGPA + 
+             GraduationYear +
+             English +
+             Quant +
+             ComputerProgramming,
+    data = data
+)
+summary(final_model2)
+
+final_model_22 = lm(
+    lnSalary ~ Gender +
+             Specialization +
+             collegeGPA + 
+             GraduationYear +
+             English +
+             Quant +
+             ComputerProgramming +
+             Logical+
+             extraversion,
+    data = data
+)
+summary(final_model_22)
+
+```
+
+
+```{r}
+par(mfrow=c(2,2))
+plot(final_model2)
+par(mfrow=c(2,2))
+plot(final_model_22)
+```
+
+Now, the normal probability plot shows more standardized residuals fall on the linear line. Also, the residual plot shows no outlier. The residuals are jumping around 0. Thus, the zero mean assumption on the error term is valid. The variation of the residuals seem to be constant across the fitted values. Therefore, the constant variance assumption on the error term looks fine. The residuals vs leverage plot still show no observation with large cook distance. Thus, we do not have any influrential point. Overall, this model looks better than previous model. 
+
+```{r}
+require(caret) #remember to install package first
+
+# K-fold cross validation
+set.seed(123)  
+  
+# defining training control 
+# as cross-validation and  
+# value of K equal to 10 
+train_control <- trainControl(method = "cv", 
+                              number = 10) 
+  
+# training the models
+
+# the model with Salary
+cv_model <- train(Salary ~ Gender + Specialization + collegeGPA + 
+    GraduationYear + English + Quant + ComputerProgramming + 
+    Logical + extraversion, data = data,  
+               method = "lm", 
+               trControl = train_control) 
+
+# the model with log(Salary) on 9 variables
+cv_lnmodel9 <- train(lnSalary ~ Gender + Specialization + collegeGPA + 
+    GraduationYear + English + Quant + ComputerProgramming + 
+    Logical + extraversion, data = data,  
+               method = "lm", 
+               trControl = train_control) 
+
+# the model with log(Salary) on 7 variables
+cv_lnmodel7 <- train(lnSalary ~ Gender + Specialization + collegeGPA + 
+    GraduationYear + English + Quant + ComputerProgramming, data = data,  
+               method = "lm", 
+               trControl = train_control) 
+cv_lnmodel6 <- train(lnSalary ~  Specialization + collegeGPA + 
+    GraduationYear + English + Quant + ComputerProgramming, data = data[data$Specialization=="1"| data$Specialization=="4",],  
+               method = "lm", 
+               trControl = train_control) 
+
+# printing model performance metrics 
+# along with other details 
+print(cv_model)
+summary(cv_model)
+
+print(cv_lnmodel9)
+summary(cv_lnmodel9)
+
+print(cv_lnmodel7)
+summary(cv_lnmodel7)
+
+cv_lnmodel7$resample
+sd(cv_lnmodel7$resample$Rsquared)
+cv_lnmodel6$resample
+sd(cv_lnmodel6$resample$Rsquared)
+```
+We find that both CV models with a prediction variable Salary and a prediction variable lnSalary have similar R-squared to the whole sample. 
+The cv_model accounts for 25.2% of the variance (R-squared = 0.252) in Salary for these observations, and the cv_lnmodel accounts similarly for 22.6% of the variance (R-squared = 0.226) in lnSalary for these observations. 
+However, the cv_model has a much higher Root Mean Squared Error, 109695.1, than the cv_lnmodel, which only has RMSE 0.438.
+Also, The cv_model has a much higher Mean Absolute Error, 86633.64, than the cv_lnmodel, which only has MAE 0.34.
+Therefore, the transformation model can have more accurate predictions with much smaller errors.
+
+We find the standard deviation around the Rsquared value for 10 folds on the transformation model is 0.043, which is relatively large window for a Rsquared value.
+
+### Attempting other possible models 
+
+```{r}
+library(MASS)
+attach(data)
+fit0=lm(Salary~Gender+Specialization+collegeGPA+GraduationYear+English+Quant+ComputerProgramming, data=data);summary(fit0)$adj.r
+boxcox(fit0) # apparently sqrt() transformation is better than log() in this case, but log maybe easier to interpret 
+fit1=lm(sqrt(Salary)~Gender+Specialization+collegeGPA+GraduationYear+English+Quant+ComputerProgramming, data=data);summary(fit1)$adj.r
+fit2=lm(sqrt(Salary)~.*., data=data);summary(fit2)$adj.r # with all the interaction, only can achieve adj.R2 = 26%
+```
+
+### check the relation between the predictors with response
+
+```{r}
+library(hexbin)
+splom(~data[,-c(2,3,4,6)],
+ panel=panel.hexbinplot,
+ diag.panel = function(x, ...){
+ yrng <- current.panel.limits()$ylim
+ d <- density(x, na.rm=TRUE)
+ d$y <- with(d, yrng[1] + 0.95 * diff(yrng) * y / max(y) )
+ panel.lines(d)
+ diag.panel.splom(x, ...)
+ },
+ lower.panel = function(x, y, ...){
+ panel.hexbinplot(x, y, ...)
+ panel.loess(x, y, ..., col = 'red')
+ },
+ pscale=0, varname.cex=0.7
+ )
+
+# try log(Salary)
+splom(~data.frame(lnSalary = log(data$Salary), data[,-c(1,2,3,4,6)]),
+ panel=panel.hexbinplot,
+ diag.panel = function(x, ...){
+ yrng <- current.panel.limits()$ylim
+ d <- density(x, na.rm=TRUE)
+ d$y <- with(d, yrng[1] + 0.95 * diff(yrng) * y / max(y) )
+ panel.lines(d)
+ diag.panel.splom(x, ...)
+ },
+ lower.panel = function(x, y, ...){
+ panel.hexbinplot(x, y, ...)
+ panel.loess(x, y, ..., col = 'red')
+ },
+ pscale=0, varname.cex=0.7
+ )
+
+# try sqrt(Salary)
+splom(~data.frame(sqrtSalary = sqrt(data$Salary), data[,-c(1,2,3,4,6)]),
+ panel=panel.hexbinplot,
+ diag.panel = function(x, ...){
+ yrng <- current.panel.limits()$ylim
+ d <- density(x, na.rm=TRUE)
+ d$y <- with(d, yrng[1] + 0.95 * diff(yrng) * y / max(y) )
+ panel.lines(d)
+ diag.panel.splom(x, ...)
+ },
+ lower.panel = function(x, y, ...){
+ panel.hexbinplot(x, y, ...)
+ panel.loess(x, y, ..., col = 'red')
+ },
+ pscale=0, varname.cex=0.7
+ )
+
+```
+
+
+
+```{r}
+fit4 = lm(sqrtSalary ~ English + Logical + Quant + ComputerProgramming, 
+          data = data.frame(sqrtSalary = sqrt(data$Salary)))
+summary(fit4)$adj.r
+
+fit5 = lm(sqrtSalary ~ .*., 
+          data = data.frame(sqrtSalary = sqrt(data$Salary), data[,-c(1,2,3,4,6)]))
+summary(fit5)$adj.r
+head(mtcars)
+
+lm(mpg ~ .:. + . , data = mtcars[,1:3])
+
+# systematic setup the variables, add second order
+Salary = data$Salary
+lnSalary = log(data$Salary)
+sqrtSalary = sqrt(data$Salary)
+x_numerical = data[,c("collegeGPA", "English", "Logical", "Quant", "Domain", 
+                      "ComputerProgramming", "conscientiousness", "agreeableness", 
+                      "extraversion", "nueroticism", "openess_to_experience")]
+x_categorical = with(data, data.frame(Gender = factor(Gender), 
+                                      Degree = factor(Degree), 
+                                      Specialization = factor(Specialization),
+                                      GraduationYear = factor(GraduationYear)))
+# create a new data.frame with all first and second order numerical variables
+x_numeric_deg2_list = lapply(x_numerical, function(x) poly(x, 2)[,])
+x_numeric_deg2_matrix = do.call("cbind", x_numeric_deg2_list)
+x_numeric_deg2 = data.frame(x_numeric_deg2_matrix)
+names(x_numeric_deg2) = do.call("c", lapply(names(x_numerical), function(x) c(x, paste0(x,2))))
+
+fit7 = lm(sqrtSalary ~ ., data = data.frame(sqrtSalary, x_categorical, x_numeric_deg2))
+summary(fit7)$adj.r
+fit8 = lm(sqrtSalary ~ .*., data = data.frame(sqrtSalary, x_categorical, x_numeric_deg2))
+summary(fit8)$adj.r
+# fit9 = step(fit8) 
+
+```
+
+```{r}
+standardize = function(x){(x-mean(x))/sd(x)}
+x_numeric_std = sapply(x_numerical, standardize)
+fit9 = lm(sqrtSalary ~ ., data = data.frame(sqrtSalary, x_categorical, x_numeric_std))
+summary(fit9)$adj.r
+fit10 = lm(sqrtSalary ~ .*., data = data.frame(sqrtSalary, x_categorical, x_numeric_std))
+summary(fit10)$adj.r
+```
+
+```{r}
+max(cor(x_numerical)-diag(ncol(x_numerical)))
+```
+
+```{r}
+min(cor(x_numerical)-diag(ncol(x_numerical)))
+```
+
+so maximum correlation will be 0.5929604
+
+### Verdict
+
+The best adjusted R-square can only reach like 27%, but the model is complicated. It is better to stay with the simple model we had before. Also, accoding to the scatterplot matrix with hexbin, salary has almost either no relationship or linear relationship with the predictors. Therefore, actual transformation probably can't help much then. 
+
+
+
